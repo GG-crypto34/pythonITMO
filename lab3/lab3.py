@@ -27,9 +27,9 @@ class BinTree:
         :param root: The root of the right child of the binary tree"""
         return root-2
     @staticmethod
-    def __pars__(self, data0, height0:int)->dict:
+    def __pars__(data0, height0:int)->dict:
         """Private function that rebuilds the binary tree in dictionary form
-        :param data0: The binary tree({root:[{leftLeaf},{rightLeaf}]})
+        :param data0: The binary tree({"root":[{leftLeaf},{rightLeaf}]})
         :param height0: The height of the binary tree
         :return: The rebuilt binary tree in dictionary form"""
         dict1 = {}
