@@ -1,39 +1,46 @@
 import sys
 import functools
 import requests
+import logging
 import io
-import unittest
-from requests import exceptions
+import math
 
-def trace(func=None, *, handle=sys.stdout):
-    print(f"decorated func: {func}, {handle}")
-    if func is None:
-        print('func is None')
-        return lambda func: trace(func, handle=handle)
+def logger(func=None, *, handle=sys.stdout):
+    def decorator(f):
+        @functools.wraps(f)
+        def wrapper(*args, **kwargs):
+            start = f"Func: {f.__name__}, Args: {args}"
+            try:
+                result = f(*args, **kwargs)
+                end  = f"Function {str(f)} ended, Res: {str(result)}"
+                if handle is sys.stdout or handle is stream:
+                    handle.write(start)
+                    handle.write(end)
+                elif isinstance(handle, logging.Logger):
+                    handle.info(start)
+                    handle.info(end)
+                return result
+            except Exception as e:
+                mes = f"Exception: {str(e)}, {type(e)}"
+                if handle is sys.stdout or handle is stream:
+                    handle.write(mes)
+                elif isinstance(handle, logging.Logger):
+                    handle.error(mes)
+                raise
+        return wrapper
+    if func is not None:
+        return decorator(func)
     else:
-        print(f'{func.__name__}, {handle}')
+        return decorator
 
-    @functools.wraps(func)
-    def inner(*args, **kwargs):
-        handle.write(f"Using handling output\n")
-        # print(func.__name__, args, kwargs)
-        return func(*args, **kwargs)
-
-    # print('return inner')
-    return inner
-
-nonstandardstream = io.StringIO()
-@trace(handle=nonstandardstream)
-def increm(x):
-    """Инкремент"""
-    # print("Инкремент")
-    return x+1
-
-increm(2)
-
-nonstandardstream.getvalue()
-
-def get_currencies(currency_codes: list, url:str = "https://www.cbr-xml-daily.ru/daily_json.js", handle=sys.stdout)->dict:
+stream = io.StringIO()
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(name)s - %(levelname)s - %(message)s'
+)
+log = logging.getLogger("L1")
+@logger(handle=stream)
+def get_currencies(currency_codes: list, url:str = "https://www.cbr-xml-daily.ru/daily_json.js")->dict:
     """
     Получает курсы валют с API Центробанка России.
 
@@ -45,79 +52,71 @@ def get_currencies(currency_codes: list, url:str = "https://www.cbr-xml-daily.ru
               Возвращает None в случае ошибки запроса.
     """
     try:
-
         response = requests.get(url)
+        response.raise_for_status()
+    except ConnectionError as e:
+        raise
 
-        # print(response.status_code)
-        response.raise_for_status()  # Проверка на ошибки HTTP
+    try:
         data = response.json()
-        # print(data)
-        currencies = {}
+    except ValueError as e:
+        raise
 
-        if "Valute" in data:
-            for code in currency_codes:
-                if code in data["Valute"]:
-                    currencies[code] = data["Valute"][code]["Value"]
-                else:
-                    currencies[code] = f"Код валюты '{code}' не найден."
-        return currencies
-
-    except requests.exceptions.RequestException as e:
-        # print(f"Ошибка при запросе к API: {e}", file=handle)
-        handle.write(f"Ошибка при запросе к API: {e}")
-        # raise ValueError('Упали с исключением')
-        raise requests.exceptions.RequestException('Упали с исключением')
-
-# Пример использования функции:
-currency_list = ['USD', 'EUR', 'GBP', 'NNZ']
-
-currency_data = get_currencies(currency_list, url='https://www.cbr-xml-daily.ru1/daily_json.js')
-if currency_data:
-     print(currency_data)
-
-MAX_R_VALUE = 1000
+    currencies = {}
+    if "Valute" in data:
+        for code in currency_codes:
+            try:
+                currencies[code] = data["Valute"][code]["Value"]
+            except KeyError as e:
+                raise e
+    else:
+        raise KeyError("no Valute in data")
+    return currencies
 
 
-# Тесты
-class TestGetCurrencies(unittest.TestCase):
+logging.basicConfig(
+    filename="quadratic.log",
+    level=logging.DEBUG,
+    format="%(levelname)s: %(message)s"
+)
 
-  def test_currency_usd(self):
-    """
-      Проверяет наличие ключа в словаре и значения этого ключа
-    """
-    currency_list = ['USD']
-    currency_data = get_currencies(currency_list)
+@logger()
+def solve_quadratic(a, b, c):
+    logging.info(f"Solving equation: {a}x^2 + {b}x + {c} = 0")
 
-    self.assertIn(currency_list[0], currency_data)
-    self.assertIsInstance(currency_data['USD'], float)
-    self.assertGreaterEqual(currency_data['USD'], 0)
-    self.assertLessEqual(currency_data['USD'], MAX_R_VALUE)
+    # Ошибка типов
+    for name, value in zip(("a", "b", "c"), (a, b, c)):
+        if not isinstance(value, (int, float)):
+            logging.critical(f"Parameter '{name}' must be a number, got: {value}")
+            raise TypeError(f"Coefficient '{name}' must be numeric")
 
-  def test_nonexist_code(self):
-    self.assertIn("Код валюты", get_currencies(['XYZ'])['XYZ'])
-    self.assertIn("XYZ", get_currencies(['XYZ'])['XYZ'])
-    self.assertIn("не найден", get_currencies(['XYZ'])['XYZ'])
+    # Ошибка: a == 0
+    if a == 0:
+        logging.error("Coefficient 'a' cannot be zero")
+        raise ValueError("a cannot be zero")
 
-  def test_get_currency_error(self):
-    error_phrase_regex = "Ошибка при запросе к API"
-    currency_list = ['USD']
+    d = b*b - 4*a*c
+    logging.debug(f"Discriminant: {d}")
 
-    with self.assertRaises(requests.exceptions.RequestException):
-      currency_data = get_currencies(currency_list, url="https://")
+    if d < 0:
+        logging.warning("Discriminant < 0: no real roots")
+        return None
 
+    if d == 0:
+        x = -b / (2*a)
+        logging.info("One real root")
+        return (x,)
+
+    root1 = (-b + math.sqrt(d)) / (2*a)
+    root2 = (-b - math.sqrt(d)) / (2*a)
+    logging.info("Two real roots computed")
+    return root1, root2
 
 
 
-  #   # Найти каким образом проверить содержание фразы error_phase_regex в
-  #   # потоке вывода
-
-  #   # Дополнить тест, который должен проверять что в потоке, куда пишет функция
-  #   # get_currencies содержится error_phrase_regex /
-  #   # для использования assertStartsWith или assertRegex
-
-
-
-
-
-# Запуск тестов
-unittest.main(argv=[''], verbosity=2, exit=False)
+if __name__ == "__main__":
+    currency_list = ['USD`', 'EUR', 'GBP']
+    try:
+        get_currencies(currency_list, 'https://www.cbr-xml-daily.ru/daily_json.js')
+    except:
+        print(stream.getvalue())
